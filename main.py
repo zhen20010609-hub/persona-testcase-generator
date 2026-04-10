@@ -9,6 +9,10 @@ from generator_MD5 import generate_md5_test_cases_excel, generate_test_cases as 
 
 RESERVED_KEYS = {"products", "id", "id_type", "cell", "name", "country"}
 
+BASE_WINDOW_WIDTH = 760
+MIN_WINDOW_HEIGHT = 700
+WINDOW_PADDING_EXTRA = 30
+
 
 def choose_output_dir():
     folder_path = filedialog.askdirectory(title="选择输出文件夹")
@@ -219,7 +223,6 @@ def show_preview_window():
     tree.heading("desc", text="Description")
     tree.heading("req_data", text="req_data")
 
-    # 宽度调回更接近第一版
     tree.column("num", width=70, anchor="center", stretch=False)
     tree.column("desc", width=320, anchor="w", stretch=False)
     tree.column("req_data", width=680, anchor="w", stretch=False)
@@ -250,7 +253,7 @@ def show_preview_window():
     detail_text = tk.Text(
         detail_container,
         height=10,
-        wrap="none",   # 不自动换行，支持横向滚动
+        wrap="none",
         undo=False
     )
 
@@ -358,11 +361,29 @@ def on_generate():
         messagebox.showerror("错误", f"生成失败：\n{e}")
 
 
+def adjust_window_size():
+    """
+    根据当前界面实际内容自动调整主窗口高度，
+    防止 country=PH 或启用扩展 key 后底部按钮被挤出窗口。
+    """
+    root.update_idletasks()
+
+    required_height = root.winfo_reqheight() + WINDOW_PADDING_EXTRA
+    final_height = max(MIN_WINDOW_HEIGHT, required_height)
+
+    current_width = root.winfo_width()
+    if current_width <= 1:
+        current_width = BASE_WINDOW_WIDTH
+
+    root.geometry(f"{current_width}x{final_height}")
+
+
 def refresh_layout():
     """
     动态重排行布局：
     - country != PH 时不显示 id_type，下面控件自动上移
     - 需要扩展 key 时才显示扩展区域
+    - 主窗口高度自动适应变化
     """
     for widget in form_frame.grid_slaves():
         widget.grid_forget()
@@ -422,11 +443,13 @@ def refresh_layout():
     entry_output_dir.grid(row=current_row, column=1, pady=8, padx=5)
     btn_choose.grid(row=current_row, column=2, pady=8, padx=5)
 
+    adjust_window_size()
+
 
 root = tk.Tk()
 root.title("persona基础格式校验用例生成工具")
-root.geometry("760x700")
-root.resizable(False, False)
+root.geometry(f"{BASE_WINDOW_WIDTH}x{MIN_WINDOW_HEIGHT}")
+root.resizable(False, True)
 
 title_label = tk.Label(root, text="基础格式校验用例生成工具", font=("微软雅黑", 14, "bold"))
 title_label.pack(pady=15)
