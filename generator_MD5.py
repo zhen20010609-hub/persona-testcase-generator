@@ -6,6 +6,7 @@
 
 import json
 import hashlib
+import os
 from itertools import combinations
 from openpyxl import Workbook
 
@@ -35,11 +36,6 @@ def modify_string(value, operation):
 
 
 def get_positive_key_combinations(extra_fields=None):
-    """
-    动态生成全部非空组合：
-    固定key：id, cell, name
-    扩展key：extra_fields 的所有 key
-    """
     extra_fields = extra_fields or {}
     all_keys = ["id", "cell", "name"] + list(extra_fields.keys())
 
@@ -53,11 +49,6 @@ def get_positive_key_combinations(extra_fields=None):
 
 
 def build_positive_case_data(input_data, keys, extra_fields=None):
-    """
-    正向组合：
-    - id / cell / name 用明文
-    - 扩展字段也始终用明文
-    """
     data = {
         "products": input_data["products"],
         "country": input_data["country"]["plain"]
@@ -83,10 +74,6 @@ def build_positive_case_data(input_data, keys, extra_fields=None):
 
 
 def build_base_data(input_data, extra_fields=None):
-    """
-    其他特殊/异常用例的基础数据：
-    扩展字段始终明文
-    """
     data = {
         "products": input_data["products"],
         "country": input_data["country"]["plain"]
@@ -131,7 +118,7 @@ def generate_test_case(base_data, config, fields):
 
 def generate_test_cases(products, id_value, id_type, cell, name, country, extra_fields=None):
     extra_fields = extra_fields or {}
-    extra_fields = {safe_str(k): safe_str(v) for k, v in extra_fields.items() if safe_str(k)}
+    extra_fields = {safe_str(k): str(v) if v is not None else "" for k, v in extra_fields.items() if safe_str(k)}
 
     input_data = {
         "products": safe_str(products),
@@ -152,14 +139,12 @@ def generate_test_cases(products, id_value, id_type, cell, name, country, extra_
     json_data = []
     descriptions = []
 
-    # 正向组合：自动生成全部非空子集
     key_combinations = get_positive_key_combinations(extra_fields)
     for keys, desc in key_combinations:
         data = build_positive_case_data(input_data, keys, extra_fields=extra_fields)
         json_data.append(json.dumps(data, ensure_ascii=False))
         descriptions.append(f"{len(descriptions) + 1}. MD5-Forward_Check-{desc}")
 
-    # 保留原有特殊/异常规则
     base_data = build_base_data(input_data, extra_fields=extra_fields)
 
     invalid_md5_values = {
@@ -276,7 +261,6 @@ def generate_test_cases(products, id_value, id_type, cell, name, country, extra_
         json_data.append(json.dumps(data, ensure_ascii=False))
         descriptions.append(f"{len(descriptions) + 1}. {desc}")
 
-    # 扩展字段异常：保持明文
     for extra_key, extra_value in extra_fields.items():
         for raw_value, desc_suffix in [("", "isEmpty"), (" ", "isSpace")]:
             data = build_base_data(input_data, extra_fields=extra_fields)
@@ -327,6 +311,32 @@ def save_to_excel(json_data, descriptions, filename):
     wb.save(filename)
 
 
+def save_metadata_excel_without_req_data(descriptions, output_excel_path):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "testcases"
+
+    ws["A1"] = "num"
+    ws["B1"] = "Description"
+    ws["C1"] = "req_data"
+
+    for i, desc in enumerate(descriptions, start=1):
+        ws.cell(row=i + 1, column=1, value=i)
+        ws.cell(row=i + 1, column=2, value=desc)
+        ws.cell(row=i + 1, column=3, value="")
+
+    wb.save(output_excel_path)
+
+
+def save_to_txt_files(json_data, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+
+    for i, json_str in enumerate(json_data, start=1):
+        file_path = os.path.join(output_dir, f"{i}.txt")
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(json_str)
+
+
 def generate_md5_test_cases_excel(products, id_value, id_type, cell, name, country, output_path, extra_fields=None):
     results, descs = generate_test_cases(
         products=products,
@@ -341,6 +351,21 @@ def generate_md5_test_cases_excel(products, id_value, id_type, cell, name, count
     return output_path
 
 
+def generate_md5_test_cases_txt(products, id_value, id_type, cell, name, country, output_dir, extra_fields=None):
+    results, descs = generate_test_cases(
+        products=products,
+        id_value=id_value,
+        id_type=id_type,
+        cell=cell,
+        name=name,
+        country=country,
+        extra_fields=extra_fields
+    )
+    save_to_txt_files(results, output_dir)
+    save_metadata_excel_without_req_data(descs, os.path.join(output_dir, "bigFile_output-MD5.xlsx"))
+    return output_dir
+
+
 if __name__ == "__main__":
     output_file = "1-AltScoreTelco_PH-weakVerify-md5.xlsx"
     generate_md5_test_cases_excel(
@@ -351,6 +376,6 @@ if __name__ == "__main__":
         name="aaa",
         country="PH",
         output_path=output_file,
-        extra_fields={"gaid": "A1B2C3D4", "email": "test@example.com"}
+        extra_fields={"gaid": "A1B2C3D4"}
     )
     print(f"Data has been successfully exported: {output_file}")

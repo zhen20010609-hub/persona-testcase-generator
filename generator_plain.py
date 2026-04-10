@@ -6,6 +6,7 @@
 
 import json
 import hashlib
+import os
 from itertools import combinations
 from openpyxl import Workbook
 
@@ -59,12 +60,6 @@ def get_invalid_modifications(value, is_id_country_special=False):
 
 
 def get_positive_key_combinations(extra_fields=None):
-    """
-    动态生成全部非空组合：
-    固定key：id, cell, name
-    扩展key：extra_fields 的所有 key
-    按组合长度从大到小输出，同长度下保持原字段顺序
-    """
     extra_fields = extra_fields or {}
     all_keys = ["id", "cell", "name"] + list(extra_fields.keys())
 
@@ -79,7 +74,7 @@ def get_positive_key_combinations(extra_fields=None):
 
 def generate_test_cases(products, id_value, id_type, cell, name, country, extra_fields=None):
     extra_fields = extra_fields or {}
-    extra_fields = {safe_str(k): safe_str(v) for k, v in extra_fields.items() if safe_str(k)}
+    extra_fields = {safe_str(k): str(v) if v is not None else "" for k, v in extra_fields.items() if safe_str(k)}
 
     inputs = {
         "products": safe_str(products),
@@ -124,7 +119,6 @@ def generate_test_cases(products, id_value, id_type, cell, name, country, extra_
         descriptions.append(f"{case_number}. {desc}")
         case_number += 1
 
-    # 正向组合：自动生成全部非空子集
     for keys, desc in key_combinations:
         data = {
             "products": inputs["products"],
@@ -148,7 +142,6 @@ def generate_test_cases(products, id_value, id_type, cell, name, country, extra_
 
         append_case(data, f"Plaintext-Forward_Check-{desc}")
 
-    # 特殊正向用例：仍然保留，并默认带全部扩展字段
     special_cases = [
         ("id_case_swap", "Plain-Forward_Check-Input_Validation-id_Case_Swap"),
         ("cell_multi", "Plain-Forward_Check-Input_Validation-cell_Multi-value_Input"),
@@ -184,7 +177,6 @@ def generate_test_cases(products, id_value, id_type, cell, name, country, extra_
 
         append_case(data, desc)
 
-    # id / cell / name 异常
     for key in ["id", "cell", "name"]:
         for value, desc in invalid_values:
             data = build_base_data(inputs, extra_fields=extra_fields)
@@ -205,7 +197,6 @@ def generate_test_cases(products, id_value, id_type, cell, name, country, extra_
         data["name"] = value
         append_case(data, f"Plain-Abnormal_Check-name{desc}")
 
-    # country 异常
     for value, desc in country_cases:
         data = {
             "products": inputs["products"],
@@ -225,7 +216,6 @@ def generate_test_cases(products, id_value, id_type, cell, name, country, extra_
 
         append_case(data, f"Plain-Abnormal_Check-countryCheck-{desc}")
 
-    # PH 特殊 id_type 用例
     if inputs["country"] == "PH":
         ph_special_cases = [
             {"products": inputs["products"], "cell": "09951822873", "id": "33597012480", "name": "Anthony", "id_type": "SSS", "country": inputs["country"]},
@@ -245,7 +235,6 @@ def generate_test_cases(products, id_value, id_type, cell, name, country, extra_
                 data.update(extra_fields)
             append_case(data, f"Plain-Forward_Check-PH_idTpye-{data['id_type']}")
 
-    # 扩展字段异常：每个扩展字段单独生成 5 条
     for extra_key, extra_value in extra_fields.items():
         for abnormal_value, abnormal_desc in [("", "isEmpty"), (" ", "isSpace")]:
             data = build_base_data(inputs, extra_fields=extra_fields)
@@ -277,6 +266,32 @@ def save_to_excel(json_data, descriptions, filename):
     wb.save(filename)
 
 
+def save_metadata_excel_without_req_data(descriptions, output_excel_path):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "testcases"
+
+    ws["A1"] = "num"
+    ws["B1"] = "Description"
+    ws["C1"] = "req_data"
+
+    for i, desc in enumerate(descriptions, start=1):
+        ws.cell(row=i + 1, column=1, value=i)
+        ws.cell(row=i + 1, column=2, value=desc)
+        ws.cell(row=i + 1, column=3, value="")
+
+    wb.save(output_excel_path)
+
+
+def save_to_txt_files(json_data, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+
+    for i, json_str in enumerate(json_data, start=1):
+        file_path = os.path.join(output_dir, f"{i}.txt")
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(json_str)
+
+
 def generate_plain_test_cases_excel(products, id_value, id_type, cell, name, country, output_path, extra_fields=None):
     results, descs = generate_test_cases(
         products=products,
@@ -291,16 +306,31 @@ def generate_plain_test_cases_excel(products, id_value, id_type, cell, name, cou
     return output_path
 
 
+def generate_plain_test_cases_txt(products, id_value, id_type, cell, name, country, output_dir, extra_fields=None):
+    results, descs = generate_test_cases(
+        products=products,
+        id_value=id_value,
+        id_type=id_type,
+        cell=cell,
+        name=name,
+        country=country,
+        extra_fields=extra_fields
+    )
+    save_to_txt_files(results, output_dir)
+    save_metadata_excel_without_req_data(descs, os.path.join(output_dir, "bigFile_output-plain.xlsx"))
+    return output_dir
+
+
 if __name__ == "__main__":
     output_file = "1-AltScoreTelco_PH-weakVerify-plain.xlsx"
     generate_plain_test_cases_excel(
         products="AltScoreTelco_PH",
         id_value="011115634849",
-        id_type="",
+        id_type="UMID",
         cell="09206587342",
         name="aaa",
-        country="MX",
+        country="PH",
         output_path=output_file,
-        extra_fields={"gaid": "A1B2C3D4", "email": "test@example.com"}
+        extra_fields={"gaid": "A1B2C3D4"}
     )
     print(f"Data has been successfully exported: {output_file}")
