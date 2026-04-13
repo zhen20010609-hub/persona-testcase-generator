@@ -62,7 +62,6 @@ def toggle_output_mode():
 
 
 def toggle_extra_value_source():
-    # 单个扩展 key + txt读取 => 自动切到 txt 输出
     if is_single_extra_key_mode() and extra_value_source.get() == "file":
         output_type.set("txt")
     else:
@@ -223,19 +222,32 @@ def truncate_long_string(value, threshold=PREVIEW_TRUNCATE_THRESHOLD,
     )
 
 
+def truncate_json_value(obj):
+    if isinstance(obj, dict):
+        return {k: truncate_json_value(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [truncate_json_value(v) for v in obj]
+    elif isinstance(obj, str):
+        return truncate_long_string(obj)
+    else:
+        return obj
+
+
 def build_preview_json(req_data):
     try:
         obj = json.loads(req_data)
     except Exception:
-        return req_data
+        return truncate_long_string(req_data)
 
-    if isinstance(obj, dict):
-        preview_obj = {}
-        for k, v in obj.items():
-            preview_obj[k] = truncate_long_string(v)
-        return json.dumps(preview_obj, ensure_ascii=False, indent=2)
+    preview_obj = truncate_json_value(obj)
+    return json.dumps(preview_obj, ensure_ascii=False, indent=2)
 
-    return json.dumps(obj, ensure_ascii=False, indent=2)
+
+def build_single_line_preview(text, max_len=180):
+    text = text.replace("\r", " ").replace("\n", " ")
+    if len(text) > max_len:
+        return text[:max_len] + "...(点击下方查看详情)"
+    return text
 
 
 def get_preview_data():
@@ -322,9 +334,18 @@ def show_preview_window():
     tree_container.rowconfigure(0, weight=1)
     tree_container.columnconfigure(0, weight=1)
 
+    preview_detail_map = {}
+
     for i, (desc, req) in enumerate(zip(descriptions, json_data), start=1):
-        preview_req = build_preview_json(req)
-        tree.insert("", "end", values=(i, desc, preview_req))
+        full_preview_req = build_preview_json(req)
+        short_preview_req = build_single_line_preview(full_preview_req)
+
+        item_id = tree.insert("", "end", values=(i, desc, short_preview_req))
+        preview_detail_map[item_id] = {
+            "num": i,
+            "desc": desc,
+            "req_data": full_preview_req
+        }
 
     detail_frame = tk.Frame(preview_win)
     detail_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
@@ -336,7 +357,7 @@ def show_preview_window():
 
     detail_text = tk.Text(
         detail_container,
-        height=10,
+        height=14,
         wrap="none",
         undo=False
     )
@@ -356,19 +377,57 @@ def show_preview_window():
     detail_container.rowconfigure(0, weight=1)
     detail_container.columnconfigure(0, weight=1)
 
+    def _on_mousewheel(event):
+        detail_text.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        return "break"
+
+    def _on_shift_mousewheel(event):
+        detail_text.xview_scroll(int(-1 * (event.delta / 120)), "units")
+        return "break"
+
+    def _on_linux_wheel_up(event):
+        detail_text.yview_scroll(-3, "units")
+        return "break"
+
+    def _on_linux_wheel_down(event):
+        detail_text.yview_scroll(3, "units")
+        return "break"
+
+    def _on_linux_shift_wheel_up(event):
+        detail_text.xview_scroll(-3, "units")
+        return "break"
+
+    def _on_linux_shift_wheel_down(event):
+        detail_text.xview_scroll(3, "units")
+        return "break"
+
+    # Windows / 常见桌面环境
+    detail_text.bind("<MouseWheel>", _on_mousewheel)
+    detail_text.bind("<Shift-MouseWheel>", _on_shift_mousewheel)
+
+    # Linux 兼容
+    detail_text.bind("<Button-4>", _on_linux_wheel_up)
+    detail_text.bind("<Button-5>", _on_linux_wheel_down)
+    detail_text.bind("<Shift-Button-4>", _on_linux_shift_wheel_up)
+    detail_text.bind("<Shift-Button-5>", _on_linux_shift_wheel_down)
+
     def on_tree_select(event):
         selected = tree.selection()
         if not selected:
             return
 
-        item = tree.item(selected[0], "values")
-        if not item:
+        item_id = selected[0]
+        row_data = preview_detail_map.get(item_id)
+        if not row_data:
             return
 
-        num, desc, req_data = item
         detail_text.delete("1.0", tk.END)
 
-        content = f"序号：{num}\n\nDescription：\n{desc}\n\nreq_data：\n{req_data}"
+        content = (
+            f"序号：{row_data['num']}\n\n"
+            f"Description：\n{row_data['desc']}\n\n"
+            f"req_data：\n{row_data['req_data']}"
+        )
         detail_text.insert(tk.END, content)
 
         detail_text.xview_moveto(0)
@@ -434,7 +493,6 @@ def on_generate():
             messagebox.showinfo("成功", f"测试用例已生成：\n{result_file}")
 
         elif data["output_mode"] == "txt":
-            # 直接输出到指定文件夹，不再建子目录
             existing_txt = [f for f in os.listdir(output_dir) if f.lower().endswith(".txt")]
             output_excel_path = os.path.join(output_dir, "output.xlsx")
             if existing_txt or os.path.exists(output_excel_path):
@@ -545,7 +603,6 @@ def refresh_layout():
                 current_row += 1
                 entry_extra_value_file.delete(0, tk.END)
 
-                # 直接输入 => 自动固定为 Excel，隐藏 txt
                 output_type.set("excel")
             else:
                 label_extra_value_file.grid(row=current_row, column=0, pady=8, padx=5)
@@ -554,7 +611,6 @@ def refresh_layout():
                 current_row += 1
                 entry_extra_value.delete(0, tk.END)
 
-                # txt读取 => 自动固定为 txt，隐藏 excel
                 output_type.set("txt")
         else:
             extra_value_source.set("input")
@@ -578,7 +634,6 @@ def refresh_layout():
 
     label_output_type.grid(row=current_row, column=0, pady=8, padx=5)
 
-    # 根据 value 来源动态只显示一种输出方式
     if is_single_extra_key_mode() and extra_value_source.get() == "file":
         radio_output_txt.pack_forget()
         radio_output_excel.pack_forget()
