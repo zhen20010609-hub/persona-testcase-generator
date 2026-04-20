@@ -55,15 +55,15 @@ def build_positive_case_data(input_data, keys, extra_fields=None):
     }
 
     if "id" in keys:
-        data["id"] = input_data["id"]["plain"]
+        data["id"] = input_data["id"]["md5"]
         if input_data.get("id_type"):
             data["id_type"] = input_data["id_type"]
 
     if "cell" in keys:
-        data["cell"] = input_data["cell"]["plain"]
+        data["cell"] = input_data["cell"]["md5"]
 
     if "name" in keys:
-        data["name"] = input_data["name"]["plain"]
+        data["name"] = input_data["name"]["md5"]
 
     if extra_fields:
         for extra_key in extra_fields.keys():

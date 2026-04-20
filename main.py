@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -87,6 +88,45 @@ def read_text_file_content(file_path):
 
     with open(file_path, "r", encoding="utf-8") as f:
         return f.read()
+
+
+def auto_fill_country_from_products(event=None):
+    """
+    仅当 products 形如 xxxxxxxx_MX / xxxxxxxx_PH（以下划线+大写国家码结尾）时，
+    自动填充 country。
+    如果不匹配，则不处理 country，保留用户手动填写的内容。
+    """
+    products = entry_products.get().strip()
+    match = re.match(r"^.+_([A-Z]{2,})$", products)
+    if match:
+        country_code = match.group(1)
+        current_country = entry_country.get().strip()
+        if current_country != country_code:
+            entry_country.delete(0, tk.END)
+            entry_country.insert(0, country_code)
+            toggle_id_type()
+
+
+def clear_all_inputs():
+    entry_products.delete(0, tk.END)
+    entry_country.delete(0, tk.END)
+    entry_id_type.delete(0, tk.END)
+    entry_id.delete(0, tk.END)
+    entry_cell.delete(0, tk.END)
+    entry_name.delete(0, tk.END)
+
+    need_extra_key.set("no")
+    entry_extra_key.delete(0, tk.END)
+    extra_value_source.set("input")
+    entry_extra_value.delete(0, tk.END)
+    entry_extra_value_file.delete(0, tk.END)
+
+    encrypt_type.set("plain")
+    output_type.set("excel")
+    entry_output_name.delete(0, tk.END)
+    entry_output_dir.delete(0, tk.END)
+
+    refresh_layout()
 
 
 def build_extra_fields():
@@ -401,11 +441,9 @@ def show_preview_window():
         detail_text.xview_scroll(3, "units")
         return "break"
 
-    # Windows / 常见桌面环境
     detail_text.bind("<MouseWheel>", _on_mousewheel)
     detail_text.bind("<Shift-MouseWheel>", _on_shift_mousewheel)
 
-    # Linux 兼容
     detail_text.bind("<Button-4>", _on_linux_wheel_up)
     detail_text.bind("<Button-5>", _on_linux_wheel_down)
     detail_text.bind("<Shift-Button-4>", _on_linux_shift_wheel_up)
@@ -674,6 +712,8 @@ form_frame.pack(padx=20, pady=10, fill="x")
 label_products = tk.Label(form_frame, text="products", width=18, anchor="e")
 entry_products = tk.Entry(form_frame, width=52)
 entry_products.insert(0, "")
+entry_products.bind("<KeyRelease>", auto_fill_country_from_products)
+entry_products.bind("<FocusOut>", auto_fill_country_from_products)
 
 label_country = tk.Label(form_frame, text="country", width=18, anchor="e")
 entry_country = tk.Entry(form_frame, width=52)
@@ -796,12 +836,13 @@ tip_label = tk.Label(
     text=(
         "说明：\n"
         "1. 只有 country = PH 时才显示 id_type，且必须填写；\n"
-        "2. 默认不启用扩展 key；\n"
-        "3. 多个扩展 key / value 请用英文逗号分隔，系统会自动忽略每项前后空格，并按顺序一一对应；\n"
-        "4. 当扩展 key 只有一个时，支持从 txt 文件读取扩展 value；\n"
-        "5. txt读取时，输出方式自动固定为 TXT文件夹；直接输入时，输出方式自动固定为 Excel；\n"
-        "6. txt 输出时，txt 文件直接生成到目标文件夹，同时额外生成 output.xlsx，且 req_data 列为空；\n"
-        "7. 预览时会自动截断超长 value，仅影响显示，不影响真实输出。"
+        "2. products 若以 _国家码 结尾（如 AltScoreTelco_PH），会自动填充 country；若无此后缀，则需手动填写；\n"
+        "3. 默认不启用扩展 key；\n"
+        "4. 多个扩展 key / value 请用英文逗号分隔，系统会自动忽略每项前后空格，并按顺序一一对应；\n"
+        "5. 当扩展 key 只有一个时，支持从 txt 文件读取扩展 value；\n"
+        "6. txt读取时，输出方式自动固定为 TXT文件夹；直接输入时，输出方式自动固定为 Excel；\n"
+        "7. txt 输出时，txt 文件直接生成到目标文件夹，同时额外生成 output.xlsx，且 req_data 列为空；\n"
+        "8. 预览时会自动截断超长 value，仅影响显示，不影响真实输出。"
     ),
     fg="gray",
     justify="left"
@@ -810,6 +851,15 @@ tip_label.pack(pady=5)
 
 button_frame = tk.Frame(root)
 button_frame.pack(pady=25)
+
+btn_clear = tk.Button(
+    button_frame,
+    text="清空",
+    width=12,
+    height=2,
+    command=clear_all_inputs
+)
+btn_clear.pack(side="left", padx=10)
 
 btn_preview = tk.Button(
     button_frame,
